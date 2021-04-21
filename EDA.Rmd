@@ -1,0 +1,66 @@
+---
+title: "503project"
+author: "Zhixin Mao"
+date: "4/12/2021"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+print(getwd())
+```
+
+```{r}
+data = read.csv("weatherAUS.csv")
+head(data)
+```
+```{r}
+summary(data)
+```
+```{r}
+dim(data)
+```
+```{r}
+data = data[!is.na(data$RainTomorrow),]
+dim(data)
+```
+```{r}
+set.seed(1)
+train = sample(nrow(data), floor(nrow(data))*0.7)
+train_dat = data[train,]
+test_dat = data[-train,]
+head(test_dat)
+dim(test_dat)
+```
+```{r}
+library(caret)
+library(RANN)
+pre_pro = preProcess(test_dat %>%
+                       dplyr::select(MinTemp, MaxTemp, Rainfall, Evaporation, Sunshine, WindGustSpeed, WindSpeed9am, WindSpeed3pm, Humidity9am, Humidity3pm, Pressure9am, Pressure3pm, Cloud9am, Cloud3pm, Temp9am, Temp3pm),
+                     method=c("knnImpute"),
+                     k=10,
+                     knnSummary=mean)
+impute_test <- predict(pre_pro, test_dat, na.action=na.pass)
+```
+
+```{r}
+name = data.frame(col=names(pre_pro$mean), mean=pre_pro$mean, sd=pre_pro$std)
+for (i in name$col) {
+  impute_test[i] <- impute_test[i]*pre_pro$std[i]+pre_pro$mean[i]
+}
+head(impute_test)
+```
+```{r}
+summary(impute_test)
+```
+
+```{r}
+impute_test[, sapply(impute_test, function(x) !is.numeric(x))] <- apply(impute_test[, sapply(impute_test, function(x) !is.numeric(x))], 2, function(x) {x[is.na(x)] <- names(sort(table(x), decreasing = TRUE)[1]); x})
+impute_test
+```
+```{r}
+write.csv(impute_test, "C:\\Users\\mzx\\Desktop\\test.csv")
+```
+
+
+

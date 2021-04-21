@@ -1,0 +1,98 @@
+---
+title: "503_project"
+author: "Zhixin Mao"
+date: "4/16/2021"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+print(getwd())
+```
+```{r}
+train = read.csv("train.csv", header=T)
+test = read.csv("test.csv", header=T)
+train = train[,c(-1,-2)]
+test = test[,c(-1,-2)]
+head(train)
+head(test)
+```
+```{r}
+train$Location=as.factor(train$Location)
+test$Location=as.factor(test$Location)
+train$WindGustDir=as.factor(train$WindGustDir)
+test$WindGustDir=as.factor(test$WindGustDir)
+train$WindDir9am=as.factor(train$WindDir9am)
+test$WindDir9am=as.factor(test$WindDir9am)
+train$WindDir3pm=as.factor(train$WindDir3pm)
+test$WindDir3pm=as.factor(test$WindDir3pm)
+train$RainToday=as.factor(train$RainToday)
+test$RainToday=as.factor(test$RainToday)
+train$RainTomorrow=as.factor(train$RainTomorrow)
+test$RainTomorrow=as.factor(test$RainTomorrow)
+
+table(train$RainTomorrow)
+table(test$RainTomorrow)
+```
+```{r}
+mod_log = glm(RainTomorrow~., data=train, family=binomial)
+pred=predict(mod_log, test)
+```
+
+```{r}
+library(ROCR)
+library(Metrics)
+par(pty = "s")
+roc(test$RainTomorrow, pred, 
+    plot=TRUE, legacy.axes=TRUE, 
+    percent=TRUE, xlab="False Positive Percentage", 
+    ylab="True Positive Percentage",
+    col="#377eb8", lwd=2, print.auc=TRUE)
+```
+
+
+```{r}
+predProbs = binomial()$linkinv(pred)
+pre_log = rep("No", nrow(test))
+pre_log[predProbs > 0.2]="Yes"
+err=mean(pre_log != test$RainTomorrow)
+err
+```
+
+
+```{r}
+table(pre_log, test$RainTomorrow)
+```
+```{r}
+no = mean(subset(pre_log!=test$RainTomorrow, test$RainTomorrow=="No"))
+yes = mean(subset(pre_log!=test$RainTomorrow, test$RainTomorrow=="Yes"))
+ber = 0.5*(no+yes)
+ber
+```
+
+```{r}
+predProbs = binomial()$linkinv(pred)
+pre_log = rep("No", nrow(test))
+pre_log[predProbs > 0.5]="Yes"
+mean(pre_log != test$RainTomorrow)
+```
+```{r}
+no = mean(subset(pre_log!=test$RainTomorrow, test$RainTomorrow=="No"))
+yes = mean(subset(pre_log!=test$RainTomorrow, test$RainTomorrow=="Yes"))
+ber = 0.5*(no+yes)
+ber
+```
+
+```{r}
+library(Epi)
+ROC(form = RainTomorrow~., data=train, plot = "ROC", MX = TRUE)
+```
+```{r}
+rc <- ROC(form = RainTomorrow~., data=train, plot="sp") 
+## optimal combination
+opt <- which.max(rowSums(rc$res[, c("sens", "spec")]))
+## optimal cut-off point 
+rc$res$lr.eta[opt]
+```
+
+
