@@ -1,0 +1,206 @@
+Load data
+```{r}
+library(Matrix)
+library(xgboost)
+```
+
+```{r}
+train <-  read.csv("F:\\Study\\UM-STATS-503\\Final_Project\\train.csv")
+test <-  read.csv("F:\\Study\\UM-STATS-503\\Final_Project\\test.csv")
+
+```
+
+```{r}
+train <- train[,3:dim(train)[2]]
+test <- test[,3:dim(test)[2]]
+```
+
+```{r}
+train_data = sparse.model.matrix(RainTomorrow ~., data = train)
+test_data = sparse.model.matrix(RainTomorrow ~., data = test)
+train_label = ifelse(train$RainTomorrow=="Yes",1,0)
+test_label = ifelse(test$RainTomorrow=="Yes",1,0)
+
+```
+
+Convert the categorical variables to factor to prepare for sparse matrix
+```{r}
+depth = seq(2, 60, by = 5)
+depth_error = c(0,length(depth))
+
+for (index in length(depth)){
+  params = list("objective" = "binary:logistic", 
+              "eval_metric" = list("error"),  	
+              "max_depth" = depth[index],    	
+              "eta" = 0.3,    			
+              "gamma" = 0,    			
+              "subsample" = 0.7,    		
+              "colsample_bytree" = 1, 		
+              "min_child_weight" = 12,
+              "verbose" = 0
+              )
+  bst_cv = xgb.cv(params = params, data = train_data,label = train_label, nrounds = 200, nfold = 5, showsd = T, stratified = T,  maximize = F)
+  
+  iter = which(bst_cv$evaluation_log$test_error_mean == min(bst_cv$evaluation_log$test_error_mean))
+  
+  xgb1 <- xgboost( data = train_data, label = train_label, nrounds = iter, maximize = F , eval_metric = "error", booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=depth[index], min_child_weight=12, subsample=0.7, colsample_bytree=1)
+  
+  xgbpred <- predict(xgb1, test_data)
+  xgbpred <- ifelse (xgbpred > 0.5,1,0)
+  depth_error[index] = mean(xgbpred != test_label)
+}
+
+
+```
+
+
+```{r}
+depth_error
+
+
+```
+
+
+
+```{r}
+
+
+# params = list("objective" = "binary:logistic", 
+#               "eval_metric" = list("error"),  	
+#               "max_depth" = 100,    	
+#               "eta" = 0.3,    			
+#               "gamma" = 0,    			
+#               "subsample" = 0.7,    		
+#               "colsample_bytree" = 1, 		
+#               "min_child_weight" = 12  		 
+#               )
+lowest_error_list = list()
+parameters_list = list()
+
+# Create 10,000 rows with random hyperparameters
+set.seed(20)
+for (iter in 1:500){
+  param <- list(booster = "gbtree",
+                objective = "binary:logistic",
+                max_depth = sample(3:10, 1),
+                eta = runif(1, .01, .3),
+                subsample = runif(1, .7, 1),
+                colsample_bytree = runif(1, .6, 1),
+                min_child_weight = sample(0:10, 1)
+  )
+  parameters <- as.data.frame(param)
+  parameters_list[[iter]] <- parameters
+}
+
+parameters_df = do.call(rbind, parameters_list)
+```
+
+```{r}
+for (row in 1:nrow(parameters_df)){
+  set.seed(20)
+  mdcv <- xgboost(data=train_data,
+                    label = train_label,
+                    booster = "gbtree",
+                    objective = "binary:logistic",
+                    max_depth = parameters_df$max_depth[row],
+                    eta = parameters_df$eta[row],
+                    subsample = parameters_df$subsample[row],
+                    colsample_bytree = parameters_df$colsample_bytree[row],
+                    min_child_weight = parameters_df$min_child_weight[row],
+                    nrounds= 300,
+                    eval_metric = "error",
+                    early_stopping_rounds= 30,
+                    print_every_n = 100,
+
+  )
+  lowest_error <- as.data.frame(1 - min(mdcv$evaluation_log$val_error))
+  lowest_error_list[[row]] <- lowest_error
+}
+
+
+```
+
+```{r}
+library(dplyr)
+lowest_error_df = do.call(rbind, lowest_error_list)
+randomsearch = cbind(lowest_error_df, parameters_df)
+
+randomsearch <- as.data.frame(randomsearch) %>%
+  rename(val_acc = `1 - min(mdcv$evaluation_log$val_error)`) %>%
+  arrange(-val_acc)
+```
+
+```{r}
+params <- list(booster = "gbtree", 
+               objective = "binary:logistic",
+               max_depth = randomsearch[1,]$max_depth,
+               eta = randomsearch[1,]$eta,
+               subsample = randomsearch[1,]$subsample,
+               colsample_bytree = randomsearch[1,]$colsample_bytree,
+               min_child_weight = randomsearch[1,]$min_child_weight)
+
+xgb_tuned <- xgboost(params = params,
+                       data = train_data,
+                       label = train_label,
+                       nrounds =2000,
+                       print_every_n = 10,
+                       eval_metric = "auc",
+                       eval_metric = "error",
+                       early_stopping_rounds = 30)
+
+```
+
+```{r}
+pred_tune_prob = predict(xgb_tuned, test_data)
+pred_tune <- ifelse (pred_tune_prob > 0.5,1,0)
+error_tune = mean(pred_tune != test_label)
+
+pr_tune <- prediction(pred_tune_prob, test$RainTomorrow)
+AUC_tune = performance(pr_tune, measure= 'auc')
+BER_tune = BER(test$RainTomorrow, pred_tune)
+AUC_tune@y.values
+BER_tune
+
+```
+
+
+```{r}
+bst.cv = xgb.cv(params = params, data = train_data,label = train_label, nrounds = 200, nfold = 5, showsd = T, stratified = T,  maximize = F)
+
+```
+```{r}
+pos = which(bst.cv$evaluation_log$test_error_mean == min(bst.cv$evaluation_log$test_error_mean))
+
+```
+
+
+
+
+```{r}
+
+xgb1 <- xgboost( data = train_data, label = train_label, nrounds = pos, print.every.n = 50, maximize = F , eval_metric = "error", booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=100, min_child_weight=12, subsample=0.7, colsample_bytree=1)
+```
+
+```{r}
+xgbpred <- predict(xgb1, test_data)
+pred <- ifelse (xgbpred > 0.5,1,0)
+```
+
+```{r}
+Test_error = mean(pred != test_label)
+Test_error
+
+```
+```{r}
+library(ROCR)
+library(Metrics)
+library(measures)
+pr_bst <- prediction(xgbpred, test$RainTomorrow)
+AUC_bst = performance(pr_bst, measure= 'auc')
+BER_bst = BER(test$RainTomorrow, pred)
+AUC_bst@y.values
+BER_bst
+
+
+
+```
