@@ -1,0 +1,129 @@
+---
+title: "SVM Fit"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+library(e1071)
+library(ROCR)
+library(tidyverse)
+library(parallelSVM)
+train <- read.csv("train.csv", header = T)
+test <- read.csv("test.csv", header = T)
+```
+
+
+```{r}
+train$RainTomorrow <- as.factor(train$RainTomorrow)
+test$RainTomorrow <- as.factor(test$RainTomorrow)
+train <- train[,-c(1,2)]
+test <- test[,-c(1,2)]
+train[,c(1,7,9,10,21)] <- lapply(train[,c(1,7,9,10,21)], factor)
+test[,c(1,7,9,10,21)] <- lapply(test[,c(1,7,9,10,21)], factor)
+train <- train[,-c(2,20,16)]
+test <- test[,-c(2,20,16)]
+```
+
+```{r}
+poly1 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.001, cost = 0.1, numberCores = 8, cross = 5)
+pred1 <- predict(poly1, test)
+mean((pred1 != test$RainTomorrow)^2)
+poly2 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.01, cost = 0.1, numberCores = 8, cross = 5)
+pred2 <- predict(poly2, test)
+mean((pred2 != test$RainTomorrow)^2)
+poly3 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.1, cost = 0.1, numberCores = 8, cross = 5)
+pred3 <- predict(poly3, test)
+mean((pred3 != test$RainTomorrow)^2)
+poly4 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.001, cost = 1, numberCores = 8, cross = 5)
+pred4 <- predict(poly4, test)
+mean((pred4 != test$RainTomorrow)^2)
+poly5 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.01, cost = 1, numberCores = 8, cross = 5)
+pred5 <- predict(poly5, test)
+mean((pred5 != test$RainTomorrow)^2)
+poly6 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.1, cost = 1, numberCores = 8, cross = 5)
+pred6 <- predict(poly6, test)
+mean((pred6 != test$RainTomorrow)^2)
+poly7 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.001, cost = 10, numberCores = 8, cross = 5)
+pred7 <- predict(poly7, test)
+mean((pred7 != test$RainTomorrow)^2)
+poly8 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.01, cost = 10, numberCores = 8, cross = 5)
+pred8 <- predict(poly8, test)
+mean((pred8 != test$RainTomorrow)^2)
+poly9 <- parallelSVM(RainTomorrow~., data = train, kernel = "polynomial", gamma = 0.1, cost = 10, numberCores = 8, cross = 5)
+pred9 <- predict(poly9, test)
+mean((pred9 != test$RainTomorrow)^2)
+```
+
+
+
+
+## Polynomial:
+
+```{r}
+bestPerform <- c()
+BERsep <- c()
+errorpos = 0
+errorneg = 0
+AUC <- c()
+for (i in 1:49) {
+  train %>% filter(Location == loc[i]) -> train1
+  test %>% filter(Location == loc[i]) -> test1
+  poly.tune <- tune(svm, RainTomorrow~., data = train1[,-1], kernal = "polynomial", range = list(gamma = c(0.001, 0.1,0.5,0.005), cost = c(0.1,0.5,1,5)))
+  bestPerform <- rbind(bestPerform, poly.tune$best.parameters)
+  test_pred = predict(poly.tune$best.model, newdata = test1[,-1])
+  tab <- table(test_pred, test1$RainTomorrow)
+  BER[i] <- tab[1,2]/sum(tab[,2]) + tab[2,1]/sum(tab[,1])
+  errorpos = errorpos + tab[1,2]
+  errorneg = errorneg + tab[2,1]
+  pr1 <- prediction(as.numeric(test_pred), as.numeric(test1$RainTomorrow))
+  auc1 = performance(pr1, "auc")
+  AUC[i] <- auc1@y.values
+}
+```
+
+
+```{r}
+BER <- BER/2
+plot(BER)
+```
+
+```{r}
+mean(BER)
+(errorneg/(dim(test%>%filter(RainTomorrow == "No"))[1]) + errorpos/(dim(test%>%filter(RainTomorrow == "Yes"))[1]))/2
+```
+
+
+# Radial:
+
+```{r}
+train <- train[,-c(2,20,16)]
+test <- test[,-c(2,20,16)]
+bestPerform2 <- c()
+BER2 <- c()
+errorpos2 = 0
+errorneg2 = 0
+AUC2 <- c()
+for (i in 1:49) {
+  train %>% filter(Location == loc[i]) -> train1
+  test %>% filter(Location == loc[i]) -> test1
+  rad.tune <- tune(svm, RainTomorrow~., data = train1[,-1], kernal = "radial", range = list(gamma = c(0.001, 0.1,0.5,0.005), cost = c(0.1,0.5,1,5)))
+  bestPerform2 <- rbind(bestPerform2, rad.tune$best.parameters)
+  test_pred = predict(rad.tune$best.model, newdata = test1[,-1])
+  tab <- table(test_pred, test1$RainTomorrow)
+  BER2[i] <- tab[1,2]/sum(tab[,2]) + tab[2,1]/sum(tab[,1])
+  errorpos2 = errorpos2 + tab[1,2]
+  errorneg2 = errorneg2 + tab[2,1]
+  pr1 <- prediction(as.numeric(test_pred), as.numeric(test1$RainTomorrow))
+  auc1 = performance(pr1, "auc")
+  AUC2[i] <- auc1@y.values
+}
+```
+
+
+
+```{r}
+mean(BER2/2)
+(errorneg2/(dim(test%>%filter(RainTomorrow == "No"))[1]) + errorpos2/(dim(test%>%filter(RainTomorrow == "Yes"))[1]))/2
+```
+
