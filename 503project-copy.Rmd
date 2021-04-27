@@ -1,0 +1,78 @@
+---
+title: "503project"
+author: "Zhixin Mao"
+date: "4/12/2021"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+data = read.csv("github/STATS-503-Project/weatherAUS.csv")
+head(data)
+```
+
+```{r}
+summary(data)
+```
+
+```{r}
+dim(data)
+```
+
+```{r}
+data = data[!is.na(data$RainTomorrow),]
+dim(data)
+```
+
+```{r}
+set.seed(1)
+# train = sample(nrow(data), floor(nrow(data))*0.7)
+# train_dat = data[train,]
+test_dat = read.csv("test.csv",header=T)
+test.id <- test_dat$X
+test_dat <- test_dat[,-1]
+train_dat <- data[-test.id,]
+head(train_dat)
+dim(train_dat)
+```
+
+```{r}
+library(caret)
+library(RANN)
+library(tidyverse)
+badrows <- which(is.na(train_dat$MinTemp) & is.na(train_dat$MaxTemp) & is.na(train_dat$Rainfall) & is.na(train_dat$Evaporation) & is.na(train_dat$Sunshine) & is.na(train_dat$WindGustSpeed) & is.na(train_dat$WindSpeed9am) & is.na(train_dat$WindSpeed3pm) & is.na(train_dat$Humidity9am) & is.na(train_dat$Humidity3pm) & is.na(train_dat$Pressure9am) & is.na(train_dat$Pressure3pm) & is.na(train_dat$Cloud9am) & is.na(train_dat$Cloud3pm) & is.na(train_dat$Temp9am) & is.na(train_dat$Temp3pm))
+train_dat <- train_dat[-badrows,]
+pre_pro = preProcess(train_dat %>%
+                       dplyr::select(MinTemp, MaxTemp, Rainfall, Evaporation, Sunshine, WindGustSpeed, WindSpeed9am, WindSpeed3pm, Humidity9am, Humidity3pm, Pressure9am, Pressure3pm, Cloud9am, Cloud3pm, Temp9am, Temp3pm),
+                     method=c("knnImpute"),
+                     k=10,
+                     knnSummary=mean)
+impute_train <- predict(pre_pro, train_dat, na.action=na.pass)
+```
+
+```{r}
+name = data.frame(col=names(pre_pro$mean), mean=pre_pro$mean, sd=pre_pro$std)
+for (i in name$col) {
+  impute_train[i] <- impute_train[i]*pre_pro$std[i]+pre_pro$mean[i]
+}
+head(impute_train)
+```
+
+```{r}
+summary(impute_train)
+```
+
+```{r}
+impute_train[, sapply(impute_train, function(x) !is.numeric(x))] <- apply(impute_train[, sapply(impute_train, function(x) !is.numeric(x))], 2, function(x) {x[is.na(x)] <- names(sort(table(x), decreasing = TRUE)[1]); x})
+impute_train
+```
+
+```{r}
+write.csv(impute_train, "train.csv")
+train <- read.csv("train.csv")
+```
+
+
